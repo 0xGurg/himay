@@ -1,0 +1,103 @@
+{{define "session"}}{{template "head" .}}
+<div class="workspace lg:grid-cols-[240px_minmax(0,1fr)] 2xl:grid-cols-[240px_minmax(0,1fr)_minmax(0,440px)]">
+  <nav class="panel pane hidden lg:flex" aria-label="Sessions">
+    <div class="ph"><a data-back class="label no-underline hover:text-accent" href="/p/{{esc .Sum.ProjectID}}">← Sessions</a></div>
+    <ul class="pane-scroll p-1.5">{{template "session-items" .Sessions}}</ul>
+  </nav>
+
+  <main class="panel pane">
+    <section class="flex shrink-0 flex-col gap-3 px-4 py-3.5">
+      <div class="flex flex-col gap-1">
+        {{if .Parent}}<a data-parent class="w-fit text-xs text-accent no-underline hover:underline" href="/s/{{esc .Parent.ID}}">↰ subagent of {{title .Parent}}</a>{{end}}
+        <h1 class="font-display text-[22px] font-bold leading-tight tracking-tight text-balance">{{title .Sum}}</h1>
+        <div class="break-all font-mono text-xs text-muted">{{.Sum.Directory}} · {{.Sum.ID}} · v{{.Sum.Version}}</div>
+      </div>
+      <dl class="facts">
+        <div><dt>default</dt><dd>{{if .Sum.Agent}}{{.Sum.Agent}}{{else}}—{{end}} · {{if .Sum.Model.ID}}{{.Sum.Model.ID}}{{else}}—{{end}}</dd></div>
+        <div><dt>steps</dt><dd>{{.Stats.Steps}}</dd></div>
+        <div><dt>tokens</dt><dd>{{count .Stats.Tokens}}</dd></div>
+        <div><dt>cost</dt><dd>{{money2 .Stats.Cost}} <span class="text-faint">reported</span></dd></div>
+        <div><dt>tools</dt><dd>{{.Stats.Tools}}</dd></div>
+        <div {{if .Stats.Errors}}class="bad"{{end}}><dt>errors</dt><dd>{{.Stats.Errors}}</dd></div>
+        <div><dt>files</dt><dd>{{len .Stats.Files}}</dd></div>
+        {{if .Sum.Children}}<div><dt>subagents</dt><dd>{{.Sum.Children}}</dd></div>{{end}}
+      </dl>
+      {{if .Stats.ModelBars}}
+      <div class="flex flex-col gap-1.5">
+        <svg class="h-2.5 w-full overflow-hidden rounded-full bg-sunk" role="img" aria-label="Token share by model" preserveAspectRatio="none">
+          {{range .Stats.ModelBars}}<rect class="f{{.Color}}" x="{{pct .Offset}}%" y="0" width="{{pct .Pct}}%" height="100%"><title>{{.Key}} {{pct .Pct}}%</title></rect>{{end}}
+        </svg>
+        <ul class="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-muted">
+          {{range .Stats.ModelBars}}<li class="flex items-center gap-1.5"><i class="inline-block size-2.5 rounded-sm c{{.Color}}"></i>{{.Key}} · {{.Line.Steps}} steps · {{count .Line.Tokens.Total}} · {{money2 .Line.Cost}}</li>{{end}}
+        </ul>
+      </div>
+      {{end}}
+    </section>
+
+    <div class="tabs shrink-0" role="tablist" aria-label="Session views">
+      <button class="tab" role="tab" aria-selected="true" data-tab hx-get="/s/{{esc .Sum.ID}}/trace" hx-target="#view" hx-push-url="false">Trace</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab data-key="i" hx-get="/s/{{esc .Sum.ID}}/instructions" hx-target="#view">Instructions <kbd class="kbd">i</kbd></button>
+      <button class="tab" role="tab" aria-selected="false" data-tab data-key="u" hx-get="/s/{{esc .Sum.ID}}/usage" hx-target="#view">Usage <kbd class="kbd">u</kbd></button>
+      <button class="tab" role="tab" aria-selected="false" data-tab data-key="F" hx-get="/s/{{esc .Sum.ID}}/files" hx-target="#view">Files <kbd class="kbd">F</kbd></button>
+      <span class="htmx-indicator ml-auto self-center text-xs text-faint" id="busy">loading…</span>
+    </div>
+
+    <div id="view" class="pane-scroll" hx-indicator="#busy">{{template "trace" .Trace}}</div>
+  </main>
+
+  <dialog id="detail-pane" class="panel detail" aria-labelledby="detail-title">
+    <div class="ph">
+      <span class="label" id="detail-title">Detail</span>
+      <span class="flex items-center gap-2 text-xs text-faint">
+        <span class="hidden sm:inline"><kbd class="kbd">j</kbd>/<kbd class="kbd">k</kbd> next · <kbd class="kbd">h</kbd> close · <kbd class="kbd">e</kbd> expand</span>
+        <button type="button" class="close-detail" data-close-detail aria-label="Close detail">✕</button>
+      </span>
+    </div>
+    <div id="detail" class="dbody" tabindex="-1" aria-live="polite"><p class="text-sm text-muted">Select a row to see its full input, output, diff, or saved reasoning.</p></div>
+  </dialog>
+</div>
+<p class="hints">
+  <span><kbd class="kbd">j</kbd>/<kbd class="kbd">k</kbd> move</span><span><kbd class="kbd">h</kbd>/<kbd class="kbd">l</kbd> back · open (fold on steps)</span>
+  <span><kbd class="kbd">enter</kbd> open subagent</span><span><kbd class="kbd">/</kbd> search</span><span><kbd class="kbd">p</kbd> parent</span>
+  <span>Reasoning shown is only what OpenCode saved.</span>
+</p>
+{{template "foot"}}{{end}}
+
+{{define "trace"}}
+<div id="trace" data-session="{{.SessionID}}">
+  <form class="filters" hx-get="/s/{{esc .SessionID}}/trace" hx-target="#trace" hx-swap="outerHTML" hx-trigger="submit, input changed delay:300ms from:#tq">
+    {{range groups}}<a class="chip" href="{{filterURL $.SessionID $.Filter $.Query .Key "" "" false}}" hx-get="{{filterURL $.SessionID $.Filter $.Query .Key "" "" false}}" hx-target="#trace" hx-swap="outerHTML" aria-pressed="{{has $.Filter.Groups .Key}}">{{.Name}}</a>{{end}}
+    <a class="chip" hx-get="{{filterURL $.SessionID $.Filter $.Query "" "" "" true}}" href="#" hx-target="#trace" hx-swap="outerHTML" aria-pressed="{{$.Filter.FailedOnly}}">failed only</a>
+    <span class="ml-auto flex items-center gap-1.5">
+      <label for="tq" class="sr-only">Search this trace</label>
+      <input id="tq" name="q" value="{{.Query}}" placeholder="Search rows" autocomplete="off" class="w-40 rounded-md border border-line bg-panel px-2 py-0.5 text-[12.5px] outline-none focus:border-accent">
+      {{range $k, $v := .Filter.Groups}}<input type="hidden" name="kind" value="{{$k}}">{{end}}
+      <label class="flex items-center gap-1 text-xs text-muted" title="Search full message content, not just row labels"><input type="checkbox" name="deep" value="1" class="accent-[var(--accent)]"> content</label>
+      <a class="chip" href="#" hx-get="/s/{{esc .SessionID}}/trace?fold=all" hx-target="#trace" hx-swap="outerHTML" title="Collapse every step">fold all</a>
+    </span>
+  </form>
+  <div class="px-3 py-1.5 font-mono text-[11.5px] text-faint">
+    {{.Shown}} of {{.Total}} rows{{if .Query}} · {{.Matches}} match “{{.Query}}”{{end}}{{if .Filter.Active}} · <a class="text-accent" href="#" hx-get="/s/{{esc .SessionID}}/trace" hx-target="#trace" hx-swap="outerHTML">clear filters</a>{{end}}
+  </div>
+  <div class="trace" role="listbox" aria-label="Execution trace" tabindex="0" id="rows">
+    {{template "trace-rows" .}}
+    {{if not .Rows}}<p class="px-4 py-6 text-sm text-muted">{{if or .Filter.Active .Query}}No rows match. Clear the filter or search to see the full trace.{{else}}No messages recorded in session_message for this session.{{end}}</p>{{end}}
+  </div>
+</div>
+{{end}}
+
+{{define "trace-rows"}}
+{{range .Rows}}
+<div class="row {{kindCls .Kind}} d{{.Depth}}{{if isStep .Kind}} step{{end}}{{if isUser .Kind}} user{{end}}" role="option" aria-selected="false" tabindex="-1"
+     data-idx="{{.Idx}}" data-msg="{{.MsgID}}" {{if .Child}}data-child="/s/{{esc .Child}}"{{end}} {{if isStep .Kind}}data-step{{end}}
+     hx-get="/s/{{esc $.SessionID}}/row?i={{.Idx}}" hx-target="#detail" hx-trigger="click, select" hx-swap="innerHTML">
+  <span class="ts">{{elapsed .Time .Start}}</span>
+  <span class="fold" aria-hidden="true">{{if and (isStep .Kind) .HasKids}}{{if .Folded}}▸{{else}}▾{{end}}{{end}}</span>
+  <span class="g" aria-hidden="true">{{glyph .Kind}}</span>
+  <span class="st">{{if ok .Status}}<span class="text-ok" aria-label="ok">✓</span>{{else if bad .Status}}<span class="text-fail" aria-label="failed">✗</span>{{else if running .Status}}<span class="text-warn" aria-label="running">…</span>{{end}}</span>
+  <span class="lbl">{{if isStep .Kind}}{{if .Agent}}{{.Agent}}{{else}}—{{end}} <span class="model">{{model .Model}}</span> <span class="fin">{{.Label}}</span>{{else}}{{.Label}}{{end}}</span>
+  <span class="right">{{if .Child}}<a class="text-accent no-underline hover:underline" href="/s/{{esc .Child}}">open ↳</a> {{end}}{{if derived .Evidence}}<span class="ev der">derived</span> {{end}}{{dur .Dur}}</span>
+</div>
+{{end}}
+{{if .Next}}<div hx-get="{{.Next}}" hx-trigger="intersect once" hx-swap="outerHTML" class="px-4 py-2 font-mono text-xs text-faint">Loading more rows…</div>{{end}}
+{{end}}

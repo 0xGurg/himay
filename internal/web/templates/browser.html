@@ -1,0 +1,63 @@
+{{define "home"}}{{template "head" .}}
+<div class="panel p-6 text-sm text-muted">No OpenCode sessions found in this database.</div>
+{{template "foot"}}{{end}}
+
+{{define "project"}}{{template "head" .}}
+<div class="workspace lg:grid-cols-[240px_minmax(0,1fr)]">
+  {{template "rail" .}}
+  <main class="panel pane">
+    <div class="ph">
+      <span class="label">Sessions</span>
+      <a class="chip" href="?{{if not .Sessions.Archived}}archived=1{{end}}" aria-pressed="{{.Sessions.Archived}}">include archived</a>
+    </div>
+    <ul class="pane-scroll p-1.5" id="sessions">
+      {{template "session-items" .Sessions}}
+    </ul>
+  </main>
+</div>
+{{template "foot"}}{{end}}
+
+{{define "session-items"}}
+{{range .Sessions}}{{template "session-item" (dict2 . $.Current)}}{{end}}
+{{if .Next}}<li hx-get="{{.Next}}" hx-trigger="intersect once" hx-swap="outerHTML" class="px-2 py-2 text-xs text-faint">Loading more sessions…</li>{{end}}
+{{if and (not .Sessions) (not .Next)}}<li class="px-3 py-4 text-sm text-muted">No sessions in this project.</li>{{end}}
+{{end}}
+
+{{define "session-item"}}{{$s := .S}}
+<li class="sess" {{if eq $s.ID .Current}}aria-current="true"{{end}}>
+  <div class="flex items-start gap-1.5">
+    {{if $s.Children}}
+    <button class="tw" type="button" aria-expanded="false" aria-label="Show {{$s.Children}} subagent sessions"
+            hx-get="/children/{{esc $s.ID}}?current={{qesc .Current}}" hx-target="next .kids" hx-swap="innerHTML"
+            data-toggle-kids>▸</button>
+    {{else}}<span class="tw" aria-hidden="true"></span>{{end}}
+    <a href="/s/{{esc $s.ID}}" class="min-w-0 flex-1 no-underline">
+      <span class="block truncate text-[13.5px] text-fg">{{title $s}}</span>
+      <span class="block truncate font-mono text-[11.5px] text-muted">{{if $s.Agent}}{{$s.Agent}}{{else}}—{{end}} · {{if $s.Model.ID}}{{$s.Model.ID}}{{else}}—{{end}} · {{age $s.Updated}}{{if $s.Children}} · ↳{{$s.Children}}{{end}}{{if $s.Archived}} · archived{{end}}</span>
+    </a>
+  </div>
+  {{if $s.Children}}<ul class="kids ml-5 border-l border-line pl-1.5" hidden></ul>{{end}}
+</li>
+{{end}}
+
+{{define "children"}}
+{{range .Sessions}}{{template "session-item" (dict2 . $.Current)}}{{end}}
+{{end}}
+
+{{define "search-empty"}}{{end}}
+
+{{define "search-results"}}
+{{if .First}}<section class="panel" aria-live="polite">
+  <div class="ph">
+    <span class="label">{{if .Deep}}Content matches for “{{.Q}}”{{else}}Sessions titled “{{.Q}}”{{end}}</span>
+    <button type="button" class="chip" data-close-search>Close</button>
+  </div>
+  <ul class="max-h-[40vh] overflow-y-auto p-1.5" id="hits">
+{{end}}
+    {{range .Titles}}<li><a href="/s/{{esc .ID}}" class="navitem"><span class="truncate">{{title .}}</span><span class="font-mono text-xs text-faint">{{if .Agent}}{{.Agent}}{{end}} · {{age .Updated}}</span></a></li>{{end}}
+    {{range .Hits}}<li><a href="/s/{{esc .SessionID}}?q={{qesc $.Q}}&amp;deep=1" class="navitem items-start"><span class="min-w-0"><span class="block font-mono text-[11.5px] text-muted">{{.Type}} · seq {{.Seq}} · {{short .SessionID 14}}</span><span class="block truncate text-[12.5px]">{{mark .Snippet $.Q}}</span></span></a></li>{{end}}
+    {{if .Next}}<li hx-get="{{.Next}}" hx-trigger="load" hx-swap="outerHTML" class="px-2 py-1.5 font-mono text-xs text-faint" data-progress>Scanning… {{.Progress}}%</li>{{end}}
+    {{if and .Done (not .Titles) (not .Hits) .First}}<li class="px-2 py-2 text-sm text-muted">No matches.</li>{{end}}
+{{if .First}}</ul>
+</section>{{end}}
+{{end}}

@@ -1,0 +1,85 @@
+{{define "detail"}}
+{{range .Sections}}
+<section class="sec">
+  <h3>{{.Title}}</h3>
+  {{if .KV}}
+  <dl class="kv">{{range .KV}}<dt>{{index . 0}}</dt><dd>{{index . 1}}</dd>{{end}}</dl>
+  {{else if .Diff}}
+  <pre class="diff">{{range diffLines .Body}}<span class="{{.Cls}}">{{.Text}}</span>{{end}}</pre>
+  {{else}}
+  <pre class="wrapit">{{.Body}}</pre>
+  {{end}}
+</section>
+{{end}}
+{{if .Row.Child}}<a class="btn" href="/s/{{esc .Row.Child}}">Open subagent session ↳</a>{{end}}
+{{if .Truncated}}<button class="btn" type="button" data-expand hx-get="/s/{{esc .SessionID}}/row?i={{.Idx}}&amp;full=1" hx-target="#detail">Show full content</button>{{end}}
+{{end}}
+
+{{define "instructions"}}
+<div class="flex flex-col gap-3.5 px-4 py-3.5">
+  <p class="note">Recorded means OpenCode stored it. Strong and possible are Himay's matches between instruction text and later actions. {{.Disclaimer}}</p>
+  {{if not .Sources}}
+  <div class="rounded-lg border border-line px-4 py-4 text-sm">
+    <p>OpenCode stored no instruction records for this session (v{{.Version}}).</p>
+    <p class="mt-1 text-muted">Older versions did not save the system prompt, AGENTS.md text, or agent prompts. Only each step's agent name is known.</p>
+  </div>
+  {{end}}
+  {{range .Sources}}
+  <details class="src" {{if .Matches}}open{{end}}>
+    <summary class="sh">
+      <span class="ev rec">{{evidence .Evidence}}</span>
+      <b class="font-semibold">{{.KindLabel}}</b>
+      <span class="min-w-0 break-all font-mono text-xs">{{short .Label 140}}</span>
+      <span class="ml-auto flex flex-wrap items-center gap-2 font-mono text-[11.5px] text-faint">
+        {{if .Correlates}}{{if or .Strong .Possible}}<span class="ev str whitespace-nowrap">{{.Strong}} strong</span><span class="ev pos whitespace-nowrap">{{.Possible}} possible</span>{{else}}<span class="ev pos">unknown</span>{{end}}{{end}}
+        <span class="whitespace-nowrap">seq {{.Seq}} · {{.Origin}}</span>
+      </span>
+    </summary>
+    <div class="flex flex-col gap-2.5 px-3 py-2.5">
+      {{if .Text}}<pre class="wrapit max-h-80 overflow-y-auto">{{.Text}}</pre>{{end}}
+      {{if .Matches}}
+      <div class="label">Later actions with matching text (inferred)</div>
+      <ul class="flex flex-col gap-2">
+        {{range .Matches}}
+        <li class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-0.5 text-[12.5px]">
+          <span class="ev {{if strong .Evidence}}str{{else}}pos{{end}}">{{evidence .Evidence}}</span>
+          <span class="min-w-0"><span class="font-mono text-xs text-muted">seq {{.Seq}} · {{.Kind}}{{if .Tool}} · {{.Tool}}{{end}} · {{.Rule}}</span>
+            <span class="block break-words font-mono text-xs">{{mark .Action .Instr}}</span></span>
+        </li>
+        {{end}}
+      </ul>
+      {{end}}
+      {{if ge .RowIdx 0}}<button class="btn w-fit" type="button" data-jump="{{.RowIdx}}">Show in trace</button>{{end}}
+    </div>
+  </details>
+  {{end}}
+</div>
+{{end}}
+
+{{define "usage"}}
+<div class="flex flex-col gap-4 px-4 py-3.5">
+  <p class="note">Each step's own model, taken from that assistant message. The session's default model is never assumed. Subscription providers often report $0.</p>
+  {{range .Tables}}
+  <section class="flex flex-col gap-1.5">
+    <h2 class="label">{{.Title}}</h2>
+    <div class="overflow-x-auto"><table class="utable">
+      <thead><tr><th>Name</th><th class="n">Steps</th><th class="n">Input</th><th class="n">Output</th><th class="n">Reasoning</th><th class="n">Cache read</th><th class="n">Cost</th><th class="n">Errors</th></tr></thead>
+      <tbody>{{range .Lines}}<tr><td>{{.Key}}</td><td class="n">{{.Steps}}</td><td class="n">{{tok .Tokens.Known .Tokens.Input}}</td><td class="n">{{tok .Tokens.Known .Tokens.Output}}</td><td class="n">{{tok .Tokens.Known .Tokens.Reasoning}}</td><td class="n">{{tok .Tokens.Known .Tokens.CacheRead}}</td><td class="n">{{if .CostKnown}}{{money .Cost}}{{else}}—{{end}}</td><td class="n {{if .Errors}}text-fail{{end}}">{{.Errors}}</td></tr>{{end}}</tbody>
+    </table></div>
+  </section>
+  {{end}}
+  {{if .Report.Unknown}}<p class="text-sm text-muted">{{.Report.Unknown}} steps have no recorded model.</p>{{end}}
+  <p class="font-mono text-xs text-faint">Session totals stored by OpenCode: input {{count .Sum.Tokens.Input}} · output {{count .Sum.Tokens.Output}} · reasoning {{count .Sum.Tokens.Reasoning}} · cache {{count .Sum.Tokens.CacheRead}}/{{count .Sum.Tokens.CacheWrite}} · {{money .Sum.Cost}}</p>
+</div>
+{{end}}
+
+{{define "files"}}
+<div class="flex flex-col gap-2 px-4 py-3.5">
+  <p class="text-xs text-muted">Files changed by successful edit, write, and apply_patch calls.</p>
+  {{if not .Files}}<p class="text-sm text-muted">No file changes recorded.</p>{{else}}
+  <div class="overflow-x-auto"><table class="utable">
+    <thead><tr><th>File</th><th class="n">Changes</th><th></th></tr></thead>
+    <tbody>{{range .Files}}<tr><td class="break-all">{{.Rel}}</td><td class="n">{{.Count}}</td><td class="n">{{if ge .RowIdx 0}}<button class="chip" type="button" data-jump="{{.RowIdx}}">first change</button>{{end}}</td></tr>{{end}}</tbody>
+  </table></div>{{end}}
+</div>
+{{end}}
